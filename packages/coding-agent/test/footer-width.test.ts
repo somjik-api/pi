@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
 import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
@@ -140,5 +140,47 @@ describe("FooterComponent width handling", () => {
 
 		const statsLine = stripAnsi(footer.render(120)[1]);
 		expect(statsLine).toContain("CH25.0%");
+	});
+
+	it("reuses expensive session stats across repeated renders", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		try {
+			let getEntriesCalls = 0;
+			let getContextUsageCalls = 0;
+			const session = createSession({
+				sessionName: "",
+				usage: {
+					input: 100,
+					output: 10,
+					cacheRead: 0,
+					cacheWrite: 0,
+					cost: { total: 0.001 },
+				},
+			}) as unknown as {
+				sessionManager: { getEntries: () => unknown[] };
+				getContextUsage: () => { contextWindow: number; percent: number };
+			};
+			const originalGetEntries = session.sessionManager.getEntries;
+			const originalGetContextUsage = session.getContextUsage;
+			session.sessionManager.getEntries = () => {
+				getEntriesCalls++;
+				return originalGetEntries();
+			};
+			session.getContextUsage = () => {
+				getContextUsageCalls++;
+				return originalGetContextUsage();
+			};
+			const footer = new FooterComponent(session as unknown as AgentSession, createFooterData(1));
+
+			footer.render(120);
+			footer.render(120);
+			footer.render(120);
+
+			expect(getEntriesCalls).toBe(1);
+			expect(getContextUsageCalls).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

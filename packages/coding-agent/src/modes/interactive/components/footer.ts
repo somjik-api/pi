@@ -45,10 +45,28 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
  * Footer component that shows pwd, token stats, and context usage.
  * Computes token/context stats from session, gets git branch and extension statuses from provider.
  */
+type FooterSessionStats = {
+	totalInput: number;
+	totalOutput: number;
+	totalCacheRead: number;
+	totalCacheWrite: number;
+	totalCost: number;
+	latestCacheHitRate: number | undefined;
+	contextUsage: ReturnType<AgentSession["getContextUsage"]>;
+};
+
 export class FooterComponent implements Component {
+	private static readonly SESSION_STATS_CACHE_TTL_MS = 1000;
 	private autoCompactEnabled = true;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
+	private sessionStatsCache:
+		| {
+				session: AgentSession;
+				computedAt: number;
+				stats: FooterSessionStats;
+		  }
+		| undefined;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
@@ -57,6 +75,7 @@ export class FooterComponent implements Component {
 
 	setSession(session: AgentSession): void {
 		this.session = session;
+		this.sessionStatsCache = undefined;
 	}
 
 	setAutoCompactEnabled(enabled: boolean): void {
@@ -79,8 +98,15 @@ export class FooterComponent implements Component {
 		// Git watcher cleanup handled by provider
 	}
 
-	render(width: number): string[] {
-		const state = this.session.state;
+	private getSessionStats(): FooterSessionStats {
+		const now = Date.now();
+		if (
+			this.sessionStatsCache &&
+			this.sessionStatsCache.session === this.session &&
+			now - this.sessionStatsCache.computedAt < FooterComponent.SESSION_STATS_CACHE_TTL_MS
+		) {
+			return this.sessionStatsCache.stats;
+		}
 
 		// Calculate cumulative usage from ALL session entries (not just post-compaction messages)
 		let totalInput = 0;
@@ -105,9 +131,25 @@ export class FooterComponent implements Component {
 			}
 		}
 
-		// Calculate context usage from session (handles compaction correctly).
-		// After compaction, tokens are unknown until the next LLM response.
-		const contextUsage = this.session.getContextUsage();
+		const stats = {
+			totalInput,
+			totalOutput,
+			totalCacheRead,
+			totalCacheWrite,
+			totalCost,
+			latestCacheHitRate,
+			// Calculate context usage from session (handles compaction correctly).
+			// After compaction, tokens are unknown until the next LLM response.
+			contextUsage: this.session.getContextUsage(),
+		};
+		this.sessionStatsCache = { session: this.session, computedAt: now, stats };
+		return stats;
+	}
+
+	render(width: number): string[] {
+		const state = this.session.state;
+		const { totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalCost, latestCacheHitRate, contextUsage } =
+			this.getSessionStats();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
 		const contextPercentValue = contextUsage?.percent ?? 0;
 		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
