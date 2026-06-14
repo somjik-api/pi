@@ -35,6 +35,7 @@ export interface TerminalSettings {
 	imageWidthCells?: number; // default: 60 (preferred inline image width in terminal cells)
 	clearOnShrink?: boolean; // default: false (clear empty rows when content shrinks)
 	showTerminalProgress?: boolean; // default: false (OSC 9;4 terminal progress indicators)
+	maxTranscriptLines?: number; // default: 3000 rendered terminal lines; 0 disables the cap
 }
 
 export interface ImageSettings {
@@ -1036,6 +1037,16 @@ export class SettingsManager {
 
 	getShowTerminalProgress(): boolean {
 		return this.settings.terminal?.showTerminalProgress ?? false;
+	}
+
+	getMaxTranscriptLines(): number | undefined {
+		const value: unknown = this.settings.terminal?.maxTranscriptLines;
+		if (value === undefined) return 3000;
+		if (value === 0) return undefined;
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+			throw new Error("Invalid terminal.maxTranscriptLines setting: must be a positive number or 0 to disable");
+		}
+		return Math.floor(value);
 	}
 
 	setShowTerminalProgress(enabled: boolean): void {

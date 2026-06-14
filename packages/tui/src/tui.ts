@@ -281,6 +281,7 @@ export class TUI extends Container {
 	private hardwareCursorRow = 0; // Actual terminal cursor row (may differ due to IME positioning)
 	private showHardwareCursor = process.env.PI_HARDWARE_CURSOR === "1";
 	private clearOnShrink = process.env.PI_CLEAR_ON_SHRINK === "1"; // Clear empty rows when content shrinks (default: off)
+	private maxRenderedLines: number | undefined;
 	private maxLinesRendered = 0; // Track terminal's working area (max lines ever rendered)
 	private previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
 	private fullRedrawCount = 0;
@@ -327,6 +328,27 @@ export class TUI extends Container {
 	 */
 	setClearOnShrink(enabled: boolean): void {
 		this.clearOnShrink = enabled;
+	}
+
+	getMaxRenderedLines(): number | undefined {
+		return this.maxRenderedLines;
+	}
+
+	/**
+	 * Limit retained rendered lines to the newest maxLines lines.
+	 * The visible viewport is always preserved even if maxLines is smaller than the terminal height.
+	 */
+	setMaxRenderedLines(maxLines: number | undefined): void {
+		const normalized = maxLines === undefined ? undefined : Math.floor(maxLines);
+		this.maxRenderedLines = normalized !== undefined && normalized > 0 ? normalized : undefined;
+	}
+
+	private limitRenderedLines(lines: string[], height: number): string[] {
+		if (this.maxRenderedLines === undefined || lines.length <= this.maxRenderedLines) {
+			return lines;
+		}
+		const retainedLines = Math.max(height, this.maxRenderedLines);
+		return lines.slice(-retainedLines);
 	}
 
 	setFocus(component: Component | null): void {
@@ -1147,6 +1169,8 @@ export class TUI extends Container {
 		if (this.overlayStack.length > 0) {
 			newLines = this.compositeOverlays(newLines, width, height);
 		}
+
+		newLines = this.limitRenderedLines(newLines, height);
 
 		// Extract cursor position before applying line resets (marker must be found first)
 		const cursorPos = this.extractCursorPosition(newLines, height);

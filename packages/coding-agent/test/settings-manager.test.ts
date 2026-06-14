@@ -378,4 +378,22 @@ describe("SettingsManager", () => {
 			expect(manager.getSessionDir()).toBe(join(homedir(), "sessions"));
 		});
 	});
+
+	describe("getMaxTranscriptLines", () => {
+		it("should default the terminal transcript render cap to 3000 lines", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ theme: "dark" }));
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getMaxTranscriptLines()).toBe(3000);
+		});
+
+		it("should load terminal maxTranscriptLines from project settings", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ terminal: { maxTranscriptLines: 3000 } }));
+			writeFileSync(
+				join(projectDir, ".pi", "settings.json"),
+				JSON.stringify({ terminal: { maxTranscriptLines: 1234 } }),
+			);
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getMaxTranscriptLines()).toBe(1234);
+		});
+	});
 });
