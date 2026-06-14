@@ -257,6 +257,29 @@ export class Container implements Component {
 		}
 		return lines;
 	}
+
+	renderTail(width: number, maxLines: number): string[] {
+		if (maxLines <= 0) return [];
+
+		const chunks: string[][] = [];
+		let remaining = maxLines;
+		for (let index = this.children.length - 1; index >= 0 && remaining > 0; index--) {
+			const child = this.children[index];
+			const childLines =
+				child instanceof Container ? child.renderTail(width, remaining) : child.render(width).slice(-remaining);
+			if (childLines.length === 0) continue;
+			chunks.push(childLines);
+			remaining -= childLines.length;
+		}
+
+		const lines: string[] = [];
+		for (let index = chunks.length - 1; index >= 0; index--) {
+			for (const line of chunks[index]) {
+				lines.push(line);
+			}
+		}
+		return lines;
+	}
 }
 
 /**
@@ -1162,8 +1185,9 @@ export class TUI extends Container {
 			return targetScreenRow - currentScreenRow;
 		};
 
-		// Render all components to get new lines
-		let newLines = this.render(width);
+		// Render only the retained tail when a transcript cap is configured, avoiding full transcript materialization.
+		const retainedLines = this.maxRenderedLines === undefined ? undefined : Math.max(height, this.maxRenderedLines);
+		let newLines = retainedLines === undefined ? this.render(width) : this.renderTail(width, retainedLines);
 
 		// Composite overlays into the rendered lines (before differential compare)
 		if (this.overlayStack.length > 0) {
